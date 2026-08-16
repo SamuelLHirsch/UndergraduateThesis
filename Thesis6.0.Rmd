@@ -1,0 +1,233 @@
+---
+title: "Thesis5.1"
+author: "Hirsch"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+OFFICEPANEL <- read.csv("~/Desktop/SENIOR THESIS/FINALDATA/OFFICEPANEL.csv")
+
+OFFICEPANELCLEAN <- OFFICEPANEL[,c(-1:-2)]
+
+head(OFFICEPANELCLEAN)
+```
+
+
+When Office Buildings were converted to Residential:
+ 
+ 1. Adaptive Reuse <- Construction year did not change
+ 2. Demolish & Rebuilt <- Construction year changed
+ 
+MAIN Q: HOW MANY OFFICE TO RESIDENTIAL CONVERSIONS ARE ADAPTIVE REUSE VS DEMOLISH & REBUILD
+
+Need to fix data to ensure class coding & Year_Built is correct
+
+```{r}
+#Fixing Data errors in Year_Built
+
+#Years go backwards, but cross-reference with Google Maps Street View between 2009-2023
+OFFICEPANELCLEAN <- 
+ OFFICEPANELCLEAN %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 1001500006, 1880))
+
+OFFICEPANELCLEAN <- 
+ OFFICEPANELCLEAN %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 1007540014, 1840))
+
+OFFICEPANELCLEAN <- 
+ OFFICEPANELCLEAN %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 1019110112, 1890))
+
+#4016930006 is new construction, and in 2023 year is marked 0 because the certificate of Occupancy had yet to be issued. As of July 2025, the Certificate of Occupancy has still not be issued. However, I'm going to mark year of construction at 2023 for the purposes of our analysis.
+
+OFFICEPANELCLEAN <- 
+ OFFICEPANELCLEAN %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 4016930006 & BLD_Cat == "Res", 2023))
+
+#131 3rd street staten island is new construction, they just kept some old elements to reduce building permit costs
+
+OFFICEPANELCLEAN <- 
+ OFFICEPANELCLEAN %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 5041920007 & BLD_Cat == "Res", 2018))
+
+#4006500063 
+
+OFFICEPANELCLEAN <- 
+ OFFICEPANELCLEAN %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 4006500063, 1921))
+
+
+#4028910019
+
+OFFICEPANELCLEAN <- 
+ OFFICEPANELCLEAN %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 4006500063, 1923))
+
+#4105310031
+
+OFFICEPANELCLEAN <- 
+ OFFICEPANELCLEAN %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 4105310031, 1952))
+```
+
+
+When Office Buildings were converted to Residential:
+ 
+ 1. Adaptive Reuse <- Construction year did not change
+ 2. Demolish & Rebuilt <- Construction year post 2009
+
+
+```{r}
+#Coding for Adaptive Reuse or Demolish & Rebuilt
+
+OFFICEPANELCLEAN <- OFFICEPANELCLEAN %>% group_by(BBLE) %>%
+  mutate(Conv_Method = case_when(
+    last(Year_Built) < 2010 ~ "Reuse",
+    last(Year_Built) > 2009 ~ "New Construction",
+    last(Year_Built) == 0 ~ "Demolished and Vacant",
+    .default = "Error"
+  )
+  )
+#this includes conversion to retail, hotel, etc. and NO conversion
+table1 <- table(OFFICEPANELCLEAN$Conv_Method)
+
+#this includes conversion to anything
+table2 <- subset(OFFICEPANELCLEAN, OUTCOME != "Office")
+table2 <- table(table2$Conv_Method)
+#7.88% is New Construction overall
+
+#this is just residential conversion
+table3 <- subset(OFFICEPANELCLEAN, OUTCOME == "Res Conv")
+table3 <- table(table3$Conv_Method)
+#38.5% is New Construction when residential conversion: much higher
+
+table1
+
+table2
+table3
+
+1918/87724 #all office buildings overall
+1582/20076 #conversion to anything but office
+826/2086 #residential conversion
+
+#2.2% saw new construction overall
+#7.9% of offices with any additional new use saw new construction
+#39.6% of residential conversions were new construction
+
+```
+
+```{r}
+OFFICEPANELCLEAN <- OFFICEPANELCLEAN %>% mutate(BORO = case_when(
+    BORO == 1 ~ "Manhattan",
+    BORO == 2 ~ "Bronx",
+    BORO == 3 ~ "Brooklyn",
+    BORO == 4 ~ "Queens",
+    BORO == 5 ~ "Staten Island"))
+table(OFFICEPANELCLEAN$BORO)
+```
+
+
+```{r}
+write.csv(OFFICEPANELCLEAN, "~/Desktop/SENIOR THESIS/FINALDATA/RESIDENTIALCONVERSIONSPANEL.csv")
+OFFICEPANELCLEAN <- read.csv("~/Desktop/SENIOR THESIS/FINALDATA/RESIDENTIALCONVERSIONSPANEL.csv")
+```
+
+
+#How many new units were created via New Construction vs Reuse of Office Buildings 2010-2023
+```{r}
+NEWUNITS23 <- OFFICEPANELCLEAN %>% filter(Year == 2023) %>% subset(OUTCOME == "Res Conv")
+
+NEWUNITS23 <- NEWUNITS23 %>% mutate(BORO = fct_relevel(BORO, 
+            "Manhattan", "Bronx", "Brooklyn", 
+            "Queens", "Staten Island"))
+
+NewUnitTable <- NEWUNITS23 %>% group_by(Conv_Method, BORO) %>% summarise(Sum_Units = sum(NewUnits), .groups = 'drop')
+
+ggplot(NewUnitTable, aes(factor(BORO), Sum_Units, fill = Conv_Method)) +
+  geom_col(position = "dodge") +
+  scale_x_discrete(guide = guide_axis(angle = 0)) +
+    labs(title = 'Additional Residential Units From Office Buildings', subtitle = "2010-2023 in NYC", x = 'Borough', y = 'Count', fill = 'Method of Conversion', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_few() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + scale_fill_manual(values = c("grey45","lightgreen"))
+```
+
+```{r}
+
+NEWUNITS23 <- OFFICEPANELCLEAN %>% filter(Year == 2023) %>% subset(OUTCOME == "Res Conv")
+
+NEWUNITS23 <- NEWUNITS23 %>% mutate(BORO = fct_relevel(BORO, 
+            "Manhattan", "Bronx", "Brooklyn", 
+            "Queens", "Staten Island"))
+
+NewBuildingTable <- NEWUNITS23 %>% group_by(Conv_Method, BORO)
+
+ggplot(NewBuildingTable, aes(factor(BORO), fill = Conv_Method)) +
+  geom_bar(position = "dodge") + 
+  geom_text(stat='count', aes(label=after_stat(count)), group = "Conv_method", position = position_dodge(width = .9), size = 4, color = "black", vjust = -0.15) + 
+  scale_x_discrete(guide = guide_axis(angle = 0)) +
+    labs(title = 'Office to Residential Conversions since 2010', subtitle = "2010-2023 in NYC", x = 'Borough', y = 'Count', fill = 'Method of Conversion', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_few() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + scale_fill_manual(values = c("grey45","lightgreen"))
+```
+
+```{r}
+
+table1 <- NewBuildingTable %>% select(Conv_Method, BORO) %>% table()
+table1
+summary(table1)
+
+kable(table1, "latex")
+```
+
+
+```{r}
+#Additional Residential Units From Office Buildings by Residential Class
+
+MNEWUNITS23 <- OFFICEPANELCLEAN %>% filter(Year == 2023) %>% subset(OUTCOME == "Res Conv" & BORO == "Manhattan")
+
+table(MNEWUNITS23$BLD_Class)
+
+MNEWUNITS23 <- MNEWUNITS23 %>%
+  mutate(Class_Simplified = case_when(
+    BLD_Class == "D1" | BLD_Class == "D3"| BLD_Class == "D5" | BLD_Class == "D6"| BLD_Class == "D7" | BLD_Class == "D8" | BLD_Class == "D9" | BLD_Class == "D6" ~ "D1:D9",
+    .default = BLD_Class))
+
+NewUnitTableClass <- MNEWUNITS23 %>% group_by(Class_Simplified) %>% summarise(Sum_Units = sum(NewUnits), .groups = 'drop')
+
+ggplot(NewUnitTableClass, aes(factor(Class_Simplified), Sum_Units, fill = Class_Simplified)) +
+  geom_col(position = "dodge") + 
+    labs(title = 'New Units Added in Manhattan by Office Conversions Across Residential Classes', subtitle = "Building class of 55 converted buildings", x = 'Office to Residential Conversion Class', y = 'Total New Units Added', fill = 'Residential Class Category in 2023', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + scale_fill_ordinal(labels = c("A4 - CITY RESIDENCE ONE FAMILY", "A5 - ONE FAMILY ATTACHED OR SEMI-DETACHED", "A7 - MANSION TYPE OR TOWN HOUSE", "B1 - TWO FAMILY BRICK", "C0 - THREE FAMILIES", "C3 - FOUR FAMILIES", "C7 - WALK-UP APT. OVER SIX FAMILIES WITH STORES","ELEVATOR APT (D1,D3,D5,D6,D7,D8,D9)"))
+
+```
+
+```{r}
+#Additional Residential Units From Office Buildings by Residential Class
+
+BKNEWUNITS23 <- OFFICEPANELCLEAN %>% filter(Year == 2023) %>% subset(OUTCOME == "Res Conv" & BORO == "Brooklyn")
+
+table(BKNEWUNITS23$BLD_Class)
+
+BKNEWUNITS23 <- BKNEWUNITS23 %>% mutate(Class_Simplified = case_when(
+    BLD_Class == "D1" | BLD_Class == "D3"| BLD_Class == "D5" | BLD_Class == "D6"| BLD_Class == "D7" | BLD_Class == "D8" | BLD_Class == "D9" | BLD_Class == "D6" ~ "D1:D9",
+    BLD_Class == "B1" | BLD_Class == "B2"| BLD_Class == "B3" ~ "B1,B2,B3",
+    .default = BLD_Class))
+
+BKGraphTable <- BKNEWUNITS23 %>% group_by(Class_Simplified) %>% summarise(Sum_Units = sum(NewUnits), .groups = 'drop')
+
+ggplot(BKGraphTable, aes(factor(Class_Simplified), Sum_Units, fill = Class_Simplified)) +
+  geom_col(position = "dodge") + 
+    labs(title = 'New Units Added in Brooklyn by Office Conversions Across Residential Classes', subtitle = "Building class of 55 converted buildings", x = 'Office to Residential Conversion Class', y = 'Total New Units Added', fill = 'Residential Class Category in 2023', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + scale_fill_ordinal(labels = c("A1 - TWO STORIES DETACHED SM OR MID","A3 - LARGE SUBURBAN RESIDENCE",  "A4 - CITY RESIDENCE ONE FAMILY", "A5 - ONE FAMILY ATTACHED OR SEMI-DETACHED", "TWO FAMILY BRICK (B1,B2, B3)", "C0 - THREE FAMILIES","C1 - OVER SIX FAMILIES WITHOUT STORES","C2 - FIVE TO SIX FAMILIES","C3 - FOUR FAMILIES", "C7 - WALK-UP APT. OVER SIX FAMILIES WITH STORES","ELEVATOR APT (D1,D3,D5,D6,D7,D9)")) +
+  scale_x_discrete(guide = guide_axis(angle = 45))
+
+```
+
+

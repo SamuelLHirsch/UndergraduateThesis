@@ -1,0 +1,344 @@
+---
+title: "Thesis8.0"
+author: "Hirsch"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+OFFICEPANELCLEAN <- read.csv("~/Desktop/SENIOR THESIS/FINALDATA/RESIDENTIALCONVERSIONSPANEL.csv")
+panel <- OFFICEPANELCLEAN[,-1]
+
+panel
+
+Conversions <- panel
+
+Conversions <- filter(panel, OUTCOME == "Res Conv")
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(BLD_Story_2010 = first(BLD_Story))
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(OG_Year_Built_2010 = first(Year_Built))
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(Zoning_2010 = first(ZONING))
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(FinMktTot_2010 = first(FinMktTot))
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(BLD_Class_2010 = first(BLD_Class))
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(Gross_SQFT_2010 = first(Gross_SQFT))
+
+
+#If 2023 FinMktTotal value is missing, use 2022 Values
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(FinMktTot = case_when(
+    FinMktTot != 0 ~ FinMktTot,
+    FinMktTot == 0 ~ nth(FinMktTot,13),
+    .default = NA,
+  ))
+
+#This is the outcome variable - value per unit
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(PerResUnit = FinMktTot/ResUnits)
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(OfficePerSQFT_2010 = FinMktTot_2010/Gross_SQFT_2010)
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(PerSQFT_2023 = FinMktTot/Gross_SQFT)
+
+Conversions <- filter(Conversions, Year == 2023)
+
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(CORNER = case_when(
+    CORNER == "CR" | CORNER == "NE"| CORNER == "NW"| CORNER == "SE"| CORNER == "SW" ~ 1,
+    .default = 0,
+  )
+  )
+
+Conversions <- Conversions %>% group_by(BBLE) %>%
+  mutate(Delta = FinMktTot - FinMktTot_2010)
+
+#Need outcome Variable to be Numeric
+#Conversions <- Conversions %>% group_by(BBLE) %>%
+#  mutate(Conv_Method = case_when(
+#    Conv_Method == "New Construction" ~ 0,
+#    Conv_Method == "Reuse" ~ 1,
+#    .default = NA,
+#  )
+ # )
+
+Conversions$Conv_Method <- as.factor(Conversions$Conv_Method)
+
+Conversions
+
+write.csv(Conversions, "~/Desktop/SENIOR THESIS/FINALDATA/ConversionsForProp.csv")
+```
+
+
+The choice of conversion method is not unrelated from all the factors that determine value after conversion. We also can't interpret the increase in average value per square foot to Conv_Method with simple controls because the control components are effect each other with co-linearity so they bias the estimate for the effect of Conv_Method. One way to address this is with popensity score matching.
+
+```{r}
+
+##Is control correlated with Conv_Method (co-linear)?
+#Is control correlated with PerSQFT_2023 (predicts Outcome)?
+#note: ResUnits has a lot of missing values
+
+my_data2 <- Conversions[, c("Conv_Method", "PerSQFT_2023", "PerResUnit", "Gross_SQFT", "CORNER", "TotalUnits", "BLD_Story", "BLD_Story_2010", "Land_Area", "FinMktTot_2010", "FinMktTot", "BORO", "OfficePerSQFT_2010", "OG_Year_Built_2010", "Gross_SQFT_2010")]
+
+my_data2$Conv_Method <- as.numeric(my_data$Conv_Method)
+
+my_data2$FinMktTot_2010 <- log(my_data2$FinMktTot_2010)
+my_data2$FinMktTot <- log(my_data2$FinMktTot)
+my_data2$PerResUnit <- log(my_data2$PerResUnit)
+my_data2$BORO <- as.factor(my_data2$BORO)
+my_data2$Gross_SQFT_2010 <- log(my_data2$Gross_SQFT_2010)
+
+my_data2 <- dummy_cols(my_data2, remove_first_dummy = FALSE)
+newnames <- dummy_cols(my_data2, remove_first_dummy = FALSE, return_generated_variables = TRUE)
+
+#my_data2$BORO_Bronx <- as.numeric(mydata2$BORO_Bronx)
+
+my_data2$BORO <- NULL
+
+my_data2
+
+simplecor2 <- cor(my_data2)
+round(simplecor2, 2)
+
+#Conv_Method <- Total Units, Delta, Retail, is sig correlated - Per Res Unit
+#Corner <- Retail, Total Units, FinMktTot, FinMktTot_2010
+#Hotel Area <- Total Units, Delta, FinMktTot_2010, FinMktTot
+#Office Area <- Delta
+#Retail strongly correlated with Everything
+#Loft NAs
+#Factory NA
+#Total Units <- Conv_Method, CORNER, Delta, FinMktTot, FinMktTot_2010, Retail Hotel Area
+#Delta <- Conv_Method, CORNER, FinMktTot, FinMktTot_2010, Retail Hotel Area, Total Units
+#FinMktTot_2010 <- everything except office and conversion method
+#FinMktTot <- everything except office and conversion method - Per Res Unit
+
+#Per Res Unit <- correlated with Conv_Method and FinMktTot
+
+
+corrplot2 <- rcorr(as.matrix(my_data2))
+
+corrplot2$P <- corrplot2$P %>% replace(is.na(.), 0)
+
+correlationmatrix2 <- corrplot(corrplot2$r, type = "upper", order = 'original', 
+         p.mat = corrplot2$P, sig.level = 0.05, insig = "blank", tl.col = "black", tl.cex = 0.8)
+```
+Controls not correlated with Conv_Method (co-linear):
+
+OfficePerSQFT_2010, BORO, CORNER, BLD_Story_2010
+
+
+Controls correlated with PerSQFT_2023 (predicts Outcome):
+
+OfficePerSQFT_2010, BORO_Manhattan, BLD_Story, Gross_SQFT, ResUnits, Land_Area, FinMktTot, FinMktTot_2010, Gross_SQFT_2010
+
+
+Controls correlated with PerResUnit (predicts Outcome):
+
+OfficePerSQFT_2010, BORO_Manhattan, BLD_Story, Gross_SQFT, ResUnits, Land_Area, FinMktTot, FinMktTot_2010, PerSQFT_2023
+
+
+Good controls: OfficePerSQFT_2010 and BORO_Manhattan
+
+
+Correlated with both Conv_Method and Per_SQFT_2023 (confounders): 
+
+Gross_SQFT, ResUnits, BLD_Story, Land_Area, FinMktTot, OG_Year_Built_2010
+
+
+Pre-2010 for matching: OG_Year_Built_2010 and Land_Area
+
+
+
+
+```{r}
+## Q1 What is the difference in average 2023 valuation per SQFT by conversion status?
+
+AvDiffSQ <- lm(log(PerSQFT_2023) ~ Conv_Method, data = Conversions)
+
+summary(AvDiffSQ)
+
+stargazer(AvDiffSQ, type = "latex")
+
+#Intercept for Conv_Method = 1.0385
+#exp(1.0385) = 2.824976
+
+#Reuse is associated with ~182% higher valuation than New Construction
+
+## Q2 exact matching ... delta total... how much does change in 2023 valuation per SQFT change based on conversion status
+## selecting matching variables: only confounding measurements before Conversion that are associated with both Conversion and PerSQFT2023. 
+
+#view(Conversions)
+
+#I would like to match on OfficePerSQFT_2010, because this would try control for whether more valuable properties select into reuse. Issue is that this is continuous. I suppose I could do quartiles? Matching on continuous variables is possible but much more complicated. Also would like to match on Manhattan or non-manhattan
+
+```
+
+Matching Variables: OG_Year_Built_2010 and Land_Area
+Control Variables: Manhattan and OfficePerSQFT_2010
+
+```{r}
+Conversions <- Conversions %>%
+  mutate(Manhattan = case_when(
+    BORO == "Manhattan" ~ 1,
+    BORO != "Manhattan" ~ 0,
+    .default = NA,
+  ))
+
+Conversions$Manhattan <- as.factor(Conversions$Manhattan) #Manhattan Dummy control
+
+Conversions <- Conversions %>% mutate(log2010PerSQFT = log(OfficePerSQFT_2010)) #log PerSQFT_2010 control
+
+```
+
+
+```{r}
+#Assessing variable balance
+
+m.out0 <- matchit(Conv_Method ~ Land_Area + Manhattan + log2010PerSQFT + 
+                    Gross_SQFT,
+                  data = Conversions,
+                  method = NULL,
+                  distance = "glm")
+# Checking balance prior to matching
+summary(m.out0)
+```
+Land_Area and Gross_SQFT are the most unbalanced
+
+
+
+
+
+```{r}
+
+#Nearest Matching
+
+M_exact <- matchit(Conv_Method ~ Land_Area + OG_Year_Built_2010, data = Conversions, method = "nearest", replace = TRUE)
+
+summary(M_exact)
+
+m.data <- match.data(M_exact)
+
+m.data # we can see the 4 subclasses: for each combo of SQFT2010 & Manhattan, and then their corresponding weight
+
+dTotRes <- lm(log(PerResUnit) ~ Conv_Method, m.data, weights = weights)
+
+print(dTotRes) # Estimate for dTot
+
+MatchingEstimateRes <- lm(log(PerResUnit) ~ Conv_Method + Manhattan + log2010PerSQFT, m.data, weights = weights)
+
+MatchingEstimateRes
+dTotRes
+
+#and for SQFT
+
+dTotSQ <- lm(log(PerSQFT_2023) ~ Conv_Method, m.data, weights = weights)
+
+MatchingEstimateSQ <- lm(log(PerSQFT_2023) ~ Conv_Method + Manhattan + log2010PerSQFT, m.data, weights = weights)
+
+print(dTotSQ) # Estimate for dTot
+MatchingEstimateSQ
+
+stargazer(dTotRes, type = "latex")
+stargazer(dTotSQ, type = "latex")
+```
+
+
+```{r}
+#Matching expirement 
+
+M_test <- matchit(Conv_Method ~ Gross_SQFT, data = Conversions, method = "nearest", replace = TRUE)
+
+summary(M_test)
+
+m.datatest <- match.data(M_test)
+
+m.test # we can see the 4 subclasses: for each combo of SQFT2010 & Manhattan, and then their corresponding weight
+
+dTotTest <- lm(log(PerSQFT_2023) ~ Conv_Method, m.data, weights = weights)
+
+print(dTotTest) # Estimate for dTot
+
+```
+ 
+
+look at this later... not for now
+```{r}
+
+MatchingEstimateRes
+dTotRes
+OLS1 <- lm(log(PerResUnit) ~ Conv_Method, data = Conversions)
+summary(OLS1)
+
+stargazer(MatchingEstimateRes, dTotRes, OLS1, title="Results for Value per Residential Unit", align=TRUE)
+```
+
+```{r}
+MatchingEstimateSQ
+dTotSQ #Matching difference
+OLSSQ <- lm(log(PerSQFT_2023) ~ Conv_Method, data = Conversions) #Raw difference
+summary(OLSSQ)
+
+plot(OLSSQ)
+
+stargazer(AvDiffSQ,MatchingEstimateSQ, dTotSQ, OLSSQ, title="Results for Value per Square Foot", align=TRUE)
+
+```
+
+```{r}
+scatterplot1 <- ggplot(Conversions, aes(x = log(Gross_SQFT), y = log(PerSQFT_2023))) + 
+  geom_point(aes(colour = factor(Conv_Method)))
+
+scatterplot1 + plot_annotation(title = "Price Per Square Foot of Converted Office Buildings in NYC", subtitle = "From NYC DOF and DOB 2023")
+```
+
+```{r}
+scatterplot2 <- ggplot(Conversions, aes(x = log(Gross_SQFT), y = log(PerSQFT_2023))) + 
+  geom_point(aes(colour = factor(Conv_Method)))
+
+scatterplot2 + plot_annotation(title = "Price Per Square Foot of Converted Office Buildings in NYC", subtitle = "From NYC DOF and DOB 2023")
+```
+
+```{r}
+scatterplot3 <- ggplot(Conversions, aes(x = log(Gross_SQFT), y = log(FinMktTot))) + 
+  geom_point(aes(colour = factor(Conv_Method)))
+
+scatterplot3 + plot_annotation(title = "Gross Square Feet of Converted Office Buildings in NYC", subtitle = "From NYC DOF and DOB 2023")
+```
+
+```{r}
+#subset(Conversions, Manhattan ==1)
+scatterplot3 <- ggplot(Conversions, aes(x = log(Gross_SQFT_2010), y = log(Gross_SQFT))) + 
+  geom_point(aes(colour = factor(Conv_Method)))
+
+scatterplot3 + plot_annotation(title = "Gross Square Feet after Office-to-Residential Conversion in NYC", subtitle = "From NYC DOF and DOB 2023")
+```
+
+The 25,000 feet cutoff seems to hold true when looking at outcomes. New Construction rarely is the method of choice when building under 25,000 SQFT. 
+
+```{r}
+scatterplot3 <- ggplot(newpanel, aes(x = log(Gross_SQFT_2010), y = log(Gross_SQFT))) + 
+  geom_point(aes(colour = factor(Conv_Method)))
+
+scatterplot3 + plot_annotation(title = "Gross Square Feet after Office-to-Residential Conversion in NYC", subtitle = "Over 25,000 Square Feet, From NYC DOF and DOB 2023")
+```
+
+```{r}
+
+```
+

@@ -1,0 +1,58 @@
+---
+title: "Thesis2.0"
+author: "Hirsch"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Hmisc)
+```
+
+```{r}
+# PULL MDB AND LOOK AT INNER TABLES -- NAME
+
+#mdb.get("TC1_10.mdb", tables = TRUE)
+#NameTable <- mdb.get("TC1_10.mdb", tables="NameTable")
+
+#mdb.get("TC234_15.mdb", tables = TRUE)
+#NameTable <- mdb.get("TC1_11.mdb", tables="NameTable")
+```
+
+### CREATE CSV IN TERMINAL USING MDB-TOOLS, SEPERATELY
+
+```{r}
+
+#READ INTO R
+setwd("/Users/rebeccahirsch/Desktop/SENIOR THESIS/MDB For Conversion")
+T1_19 <- read.csv("T1_19.csv")
+T2_19 <- read.csv("T2_19.csv")
+```
+
+```{r}
+# Check that these are the same dimensions and types and should be merged... pray there are no problems.
+dim(T1_19)
+dim(T2_19)
+identical(str(T1_19), str(T2_19))
+```
+
+```{r}
+#bind tax classes 1 to 2,3,4,5
+T_19 <- rbind(T1_19, T2_19)
+```
+
+```{r}
+head(T_19)
+```
+
+
+```{r}
+#create final CSV in folder
+write.csv(T_19, "~/Desktop/SENIOR THESIS/Final CSV/T_19.csv")
+```
+
+```{r}
+summary(T_13)
+```
+

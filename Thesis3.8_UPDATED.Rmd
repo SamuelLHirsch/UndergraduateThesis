@@ -1,0 +1,169 @@
+---
+title: "Thesis3.8"
+author: "Hirsch"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(plm)
+library(dplyr)
+library(car)
+library(foreign)
+library(gplots)
+```
+
+
+```{r}
+FINALFRAME <- read.csv("~/Desktop/SENIOR THESIS/FINALDATA/FINALFRAME.csv")
+```
+
+```{r}
+FINALFRAME
+```
+
+
+```{r}
+
+# I checked the "flagged" public utility conversions, and decided to throw them into Other because I don't see why not.
+
+BLDG_CATS <- list(
+  
+  Office = c('O1','O2','O3','O4','O5','O6','O7',"O8",'O9','RB'),
+  Res = c('A0','L1','A1','L2','A2','L3','A3','L8','A4','L9','A5','A6','R1','A7','R2','A8','R3','A9','R4','A10','A11','R6','A12','R7','A13','R8','A14','R9','A15','A16','A17','A18','A19','A20','A21','A22','A23','A24','A25','A26','A27','D0','D1','D2','D3','D4','D5','D6','D7','D8','D9','DB','DC', 'B1','B2','B3','B9', 'C0','C1','C2','C3','C4','C5','C6','C7','C8', 'C9'),
+  Other = c('E1','M1','N1','P1','RA','Y2','E2','M2','N2','P2','RB','V4','Y3','E7','M3','N3','P3','RG','V5','Y4','E9','M4','N4','P4','V6','Y5','M9','N9','P5','V7','Y6','F1','P6','RP','V8','Y7','F2','P7','RR','V9','Y8','F4','P8','RS','W','Y9','F5','P9','RT','W1','F8','RW','W2','Z0','F9','Q1','W3','Z1','Q2','W4','Z2','G0','I1','J1','Q3','W5','Z3','G1','I2','J2','Q4','W6','Z4','G2','I3','J3','Q5','W7','Z5','G3','I4','J4','Q6','W8','G4','I5','J5','Q7','W9','Z8','G5','I6','J6','Q8','Y','Z9','G6','I7','J7','Q9','Y1','G7','I9','J8','G8','J9','G9','GU','GW'),
+  Hotel = c('HB','HH','HR','HS','H1','H2','H3','H4','H5','H6','H7','H8','H9','RH', 'T1','T2','T9','U0','U1','U2','U3','U4','U5','U6','U7','U8','U9','Z7'),
+  Retail = c('K1','R5','K2','K3',"K4",'K5','K6','K7','K8','K9','RK'),
+  Vacant = c('V0','V1','V2','V3','V9'),
+  MixedRes = c('S0',"S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9")
+)
+
+FINALFRAME$BLD_Cat <- as.factor(FINALFRAME$BLD_Class)
+
+levels(FINALFRAME$BLD_Cat) <- BLDG_CATS
+
+```
+
+```{r}
+FINALFRAME
+table(FINALFRAME$BLD_Cat)
+```
+
+```{r}
+case <- FINALFRAME %>% filter(BBLE == 1001470014)
+
+#View(case)
+```
+
+
+```{r}
+barplot(table(FINALFRAME$Year))
+```
+
+
+```{r}
+ggplot(subset(FINALFRAME, BLD_Story > 10 & BORO == 1), aes(x = Year, fill = BLD_Cat)) + geom_bar()
+
+```
+
+```{r}
+
+ggplot(subset(FINALFRAME, Year %in% "2023"), aes(x = BLD_Story, y = OFFICE_AREA_GROSS)) + geom_point(size = 1)
+
+
+ggplot(subset(FINALFRAME, Year %in% "2023"), aes(x = BLD_Story)) + geom_boxplot()
+# bld_story should be log transformed
+```
+
+
+```{r}
+
+BLD22 <- subset(FINALFRAME, Year == 2022)
+
+
+point1 <- ggplot(BLD22, aes(x = OFFICE_AREA_GROSS, y = FinMktTot, color = factor(BORO))) + 
+  geom_point(alpha = 1/2) +  labs(x="OFFICE AREA (SQFT)", y="MARKET VALUE ($)", title = "OFFICE AREA vs BUILDING VALUE", caption = "Source: NYC Department of Finance, 2022") + scale_x_continuous(labels = scales::comma) + 
+  scale_y_continuous(labels = scales::comma) + geom_smooth(method = "loess", se = FALSE) + 
+  theme_minimal()
+
+point1
+```
+
+
+```{r}
+FINALFRAME
+```
+
+```{r}
+FINALPANEL <- pdata.frame(FINALFRAME, index = c("BBLE", "Year"))
+
+#View(FINALPANEL)
+```
+
+```{r}
+dim(FINALPANEL)
+dim(FINALFRAME)
+
+pvar(FINALPANEL)
+```
+
+```{r}
+#checking edge cases
+
+case <- FINALPANEL %>% filter(BBLE == 1012600004) #1915 --> demolished... this building shows up as being built in 914
+
+case <- FINALPANEL %>% filter(BBLE == 4093180132) # this building showed up as 929... 
+
+case <- FINALPANEL %>% filter(BBLE == 1010300015)
+
+case <- FINALPANEL %>% filter(BBLE == 1013490005)
+
+#lets check for issues with Year_Built
+
+View(FINALPANEL %>% filter(Year_Built > 0 & Year_Built < 1800)) ## should be empty! Yay!
+
+case <- FINALPANEL %>% filter(BBLE == 1008590086)
+
+
+case <- FINALPANEL %>% filter(BBLE == 1007540014) #small brownstone from office to residential. caught issue with unusual bld_class. solved.
+
+case <- FINALPANEL %>% filter(BBLE == 1013240032) #solved, class
+
+
+
+View(case)
+
+```
+
+```{r}
+#fixing issues with years
+
+FINALPANEL$Year_Built <-replace(FINALPANEL$Year_Built, FINALPANEL$Year_Built == 114, 2014)
+
+FINALPANEL$Year_Built <-replace(FINALPANEL$Year_Built, FINALPANEL$Year_Built == 914 |FINALPANEL$Year_Built == 920, 0)
+
+FINALPANEL$Year_Built <-replace(FINALPANEL$Year_Built, FINALPANEL$Year_Built == 936, 1936)
+
+FINALPANEL$Year_Built <-replace(FINALPANEL$Year_Built, FINALPANEL$Year_Built == 901, 1901)
+
+FINALPANEL$Year_Built <-replace(FINALPANEL$Year_Built, FINALPANEL$Year_Built == 994, 1994)
+
+FINALPANEL$Year_Built <-replace(FINALPANEL$Year_Built, FINALPANEL$Year_Built == 929, 1929)
+
+#Fixing another issue with year, set last(year_built) == 0
+
+FINALPANEL <- 
+ FINALPANEL %>% 
+ mutate(Year_Built = replace(Year_Built, BBLE == 4014850021 & BLD_Cat == "Vacant", 0))
+```
+
+```{r}
+FINALPANEL <- FINALPANEL[,-1]
+FINALPANEL
+write.csv(FINALPANEL, "~/Desktop/SENIOR THESIS/FINALDATA/FINALPANEL.csv")
+```
+
+
+

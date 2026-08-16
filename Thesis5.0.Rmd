@@ -1,0 +1,381 @@
+---
+title: "Thesis5.0"
+author: "Hirsch"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(stargazer)
+library(ggplot2)
+library(devtools)
+library(ggthemes)
+library(plm)
+library(dplyr)
+library(scales)
+library(tidyverse)
+```
+
+The goal of Thesis 5.0 Script is to take my data panel and code observations into categories.
+
+Office Buildings built before 2009 that as of 2023 are coded as:
+
+ 1. Office Space still Office Space
+ 2. Office Space converted into Residential
+ 3. Office Space converted into Other Space
+ 4. Office Space converted into Hotel Space
+ 5. Office Space converted into Retail Space
+ 6. Office Space converted into Mixed Use Space
+ 7. Office Space converted into Vacant Land <- to be clear "Vacant" explicitly means vacant land
+ 
+ When Office Buildings were converted to Residential:
+ 
+ 1. Adaptive Reuse <- Construction year did not change
+ 2. Demolish & Rebuilt <- Construction year changed
+ 
+MAIN Q: HOW MANY OFFICE TO RESIDENTIAL CONVERSIONS ARE ADAPTIVE REUSE VS DEMOLISH & REBUILD
+ 
+
+ 
+```{r}
+FINALPANEL <- read.csv("~/Desktop/SENIOR THESIS/FINALDATA/FINALPANEL.csv")
+head(FINALPANEL)
+```
+
+```{r}
+#Making the Panel Data Frame a time-series
+FINALPANEL <- pdata.frame(FINALPANEL, index = c("BBLE", "Year"))
+pvar(FINALPANEL)
+```
+
+FINALPANEL currently has offices that were converted from other buildings or new construction - It is all buildings that were offices at any time between 2010-2023
+
+I want a panel that only has buildings that were office buildings in 2010 and complete 14yrs of data
+
+```{r}
+
+#Remove BBLEs that were converted to offices by only selecting those that were offices in 2010
+
+oldoff <- FINALPANEL %>% group_by(BBLE) %>% subset(Year==2010 & BLD_Cat == "Office")
+
+OFFICEPANEL <- FINALPANEL[FINALPANEL$BBLE %in% oldoff$BBLE, ]
+
+uncuttesting <- OFFICEPANEL %>% group_by(BBLE) %>% count()
+dim(uncuttesting)
+table(uncuttesting$n)
+
+#How many of the 9,072 buildings were offices in 2010?
+#6,776 with 6403 with 14 observations
+
+#Remove BBLEs without 14 observations
+cnt <- OFFICEPANEL %>% group_by(BBLE) %>% count()
+OFFICEPANEL <- OFFICEPANEL[OFFICEPANEL$BBLE %in% cnt[cnt$n == 14, ]$BBLE, ]
+
+cuttesting <- OFFICEPANEL %>% group_by(BBLE) %>% count()
+table(cuttesting$n)
+
+#this matches what we expected
+
+#6,403 Observations of 2010 office buildings in 2023
+```
+
+```{r}
+#Creating Categories of Outcomes: what the building was taxed as in 2023
+
+OFFICEPANEL <- OFFICEPANEL %>% group_by(BBLE) %>%
+  mutate(OUTCOME = case_when(
+    last(BLD_Cat) == "Res" ~ "Res Conv",
+    last(BLD_Cat) == "Office" ~ "Office",
+    last(BLD_Cat) == "Hotel" ~ "Hotel Conv",
+    last(BLD_Cat) == "Retail" ~ "Retail Conv",
+    last(BLD_Cat) == "Vacant" ~ "Vacant Land",
+    last(BLD_Cat) == "Other" ~ "Other",
+    last(BLD_Cat) == "MixedRes" ~ "MixedRes",
+    .default = "Missing"
+  )
+  )
+
+#Need to explain these categories: especially how Mixed Residential are office buildings that are converted to the S classes, eg. primarily residential, but have retained Office or retail use. Some of these are bigger conversions than others: many of these buildings are small and its just a change in which half of the building is estimated to be generating more revenue. 
+```
+
+```{r}
+
+head(OFFICEPANEL)
+write.csv(OFFICEPANEL, "~/Desktop/SENIOR THESIS/FINALDATA/OFFICEPANEL.csv")
+
+OFFICEPANEL <- read.csv("~/Desktop/SENIOR THESIS/FINALDATA/OFFICEPANEL.csv")
+```
+
+
+
+```{r}
+#I think what I'm actually curious about here is how many new units were created, not the building classes themselves.
+#How many new units were created in each borough out of office buildings?
+
+OFFICEPANEL <- OFFICEPANEL %>% group_by(BBLE) %>%
+  mutate(NewUnits = last(ResUnits) - first(ResUnits))
+
+NEWUNITS23 <- OFFICEPANEL %>% filter(Year == 2023) %>% subset(OUTCOME == "Res Conv" | OUTCOME == "MixedRes")
+
+NewUnitTable <- NEWUNITS23 %>% group_by(BORO, OUTCOME) %>% summarise(Sum_Units = sum(NewUnits), .groups = 'drop')
+
+NewUnitTable <- NewUnitTable %>% mutate(BORO = case_when(
+    BORO == 1 ~ "Manhattan",
+    BORO == 2 ~ "Bronx",
+    BORO == 3 ~ "Brooklyn",
+    BORO == 4 ~ "Queens",
+    BORO == 5 ~ "Staten Island"))
+table(NewUnitTable$BORO)
+
+NewUnitTable <- NewUnitTable %>% mutate(BORO = fct_relevel(BORO, 
+            "Manhattan", "Bronx", "Brooklyn", 
+            "Queens", "Staten Island"))
+
+ggplot(NewUnitTable, aes(BORO, Sum_Units, fill = OUTCOME)) +
+  geom_col(position = "dodge") +
+  labs(title = 'Additional Residential Units From Conversion to Residential vs Mixed-Use', subtitle = "2010-2023 in NYC", x = 'Borough', y = 'New Units Created', fill = 'Method of Conversion', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_few() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + 
+  scale_fill_manual(values = c("coral2","grey"), labels = c("Mixed-Use Residential Conversion", "Residential Conversion"))
+
+#Great so I can just focus on the clean "Residential" conversions, because all the messy mixed use conversions tend to create relatively few units. Looking at the classes 'A0','L1','A1','L2','A2','L3','A3','L8','A4','L9','A5','A6','R1','A7','R2','A8','R3','A9','R4','A10','A11','R6','A12','R7','A13','R8','A14','R9','A15','A16','S0','A17','S1','A18','S2','A19','S3','A20','S4','A21','S5','A22','S9','A23','A24','A25','A26','A27','D0','D1','D2','D3','D4','D5','D6','D7','D8','D9','DB','DC'
+
+```
+
+```{r}
+subsetted1 <- OFFICEPANEL %>% subset(OUTCOME == "Res Conv" & Year == 2023)
+sum(subsetted1$NewUnits)
+```
+8759 New Units created between 2010-2023 via conversion to Residential to Office Building
+
+```{r}
+write.csv(OFFICEPANEL, "~/Desktop/SENIOR THESIS/FINALDATA/OFFICEPANEL.csv")
+
+OFFICEPANEL <- read.csv("~/Desktop/SENIOR THESIS/FINALDATA/OFFICEPANEL.csv")
+```
+
+
+```{r}
+#Just in 2023 for simple graphing
+OFFICES23 <- OFFICEPANEL %>% subset(Year == "2023")
+```
+
+```{r, fig.align='center'}
+
+ggplot(data = OFFICES23, aes(x = factor(OUTCOME), 
+                          y = prop.table(stat(count)), 
+                          fill = factor(OUTCOME), 
+                          label = scales::percent(prop.table(stat(count))))) +
+    geom_bar(position = "dodge") + 
+    geom_text(stat = 'count',
+              position = position_dodge(.9), 
+              vjust = -0.5, 
+              size = 3) + 
+      scale_y_continuous(labels = scales::percent) +
+      scale_x_discrete(guide = guide_axis(angle = 45)) +
+      labs(title = 'What happened to 2010 Office Properties?', subtitle = "Conversion Rate on 6,403 Buildings",x = "Property Category in 2023", y = 'Proportion', fill = 'Building Class Category in 2023', caption = "Data from New York City Department of Finance Property Tax Rolls 2009-2023") + 
+      theme_classic() + 
+      theme(text = element_text(size = 10), legend.position = "right", plot.caption.position = "plot") + 
+      scale_fill_colorblind(labels = c("Hotel Conversion","Mixed-Use Residential", "No Conversion - Office Building", "Other Conversion", "Residential Conversion", "Retail Conversion", "Vacant - Office Demolished"))
+
+
+```
+NOTE: make this as a Sankey plot in Tableu with OFFICEPANEL !!!
+
+How about conversions just in Manhattan, where there is the least available amount of new land?
+
+```{r}
+#subset for just manhattan
+MOFFICES23 <- OFFICES23 %>% subset(BORO == 1)
+
+MOFFICES23 %>% group_by(BBLE) %>% dim()
+```
+
+
+```{r}
+ggplot(data = MOFFICES23, aes(x = factor(OUTCOME), 
+                          y = prop.table(stat(count)), 
+                          fill = factor(OUTCOME), 
+                          label = scales::percent(prop.table(stat(count))))) +
+    geom_bar(position = "dodge") + 
+    geom_text(stat = 'count',
+              position = position_dodge(.9), 
+              vjust = -0.5, 
+              size = 3) + 
+      scale_y_continuous(labels = scales::percent) +
+      scale_x_discrete(guide = guide_axis(angle = 45)) +
+      labs(title = '2010 Office Properties in Manhattan', subtitle = "Conversion Rate on 1,936 buildings", x = "Property Category in 2023", y = 'Proportion', fill = 'Building Class Category in 2023' , caption = "Data from New York City Department of Finance Property Tax Rolls 2009-2023") + 
+      theme(text = element_text(size = 10), legend.position = "right", plot.caption.position = "plot") + 
+      theme_classic() + 
+      scale_fill_colorblind(labels = c("Hotel Conversion","Mixed-Use Residential", "No Conversion - Office Building", "Other Conversion", "Residential Conversion", "Retail Conversion", "Vacant - Office Demolished"))
+```
+
+
+```{r}
+table(MOFFICES23$OUTCOME)
+```
+
+
+```{r}
+#Let's break down Retail Conversions in Manhattan
+
+MRETAIL23 <- subset(MOFFICES23, OUTCOME == "Retail Conv")
+
+ggplot(data = MRETAIL23, aes(x = factor(BLD_Class), 
+                          fill = factor(BLD_Class))) +
+    geom_bar(position = "dodge") + 
+  geom_text(stat='count', aes(label=after_stat(count)), vjust=2, size = 4, color = "white") +
+    labs(title = 'Retail Conversions in Manhattan', subtitle = "Building class of 84 converted buildings", x = 'Office to Retail Conversion Class', y = 'Count', fill = 'Retail Class Category in 2023', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + 
+  scale_fill_colorblind(labels = c("K1 - One Story Retail Building", "K2 - Multi-Story Retail Building", "K4 - Predominant Retail With Other Uses", "K7 - Banking Facilities With or Without Parking"))
+
+```
+
+
+```{r}
+#Let's break down Retail Conversions in Brooklyn
+
+BKOFFICES23 <- OFFICES23 %>% subset(BORO == 3)
+
+BKOFFICES23 %>% group_by(BBLE) %>% dim()
+
+BKRETAIL23 <- subset(BKOFFICES23, OUTCOME == "Retail Conv")
+
+ggplot(data = BKRETAIL23, aes(x = factor(BLD_Class), 
+                          fill = factor(BLD_Class))) +
+    geom_bar(position = "dodge") + 
+  geom_text(stat='count', aes(label=after_stat(count)), vjust=-0.25, size = 4, color = "black") +
+    labs(title = 'Retail Conversions in Brooklyn', subtitle = "Building class of 84 converted buildings", x = 'Office to Retail Conversion Class', y = 'Count', fill = 'Retail Class Category in 2023', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + 
+  scale_fill_colorblind(labels = c("K1 - One Story Retail Building", "K2 - Multi-Story Retail Building", "K4 - Predominant Retail With Other Uses", "K5 - STAND-ALONE FOOD ESTABLISHMENT", "K7 - Banking Facilities With or Without Parking", "K9 - MISCELLANEOUS STORE BUILDING"))
+
+
+```
+
+
+```{r}
+#Office to Residential Conversions by Boro
+
+ALLRES23 <- subset(OFFICES23, OUTCOME == "Res Conv")
+
+ALLRES23 <- ALLRES23 %>% mutate(BORO = case_when(
+    BORO == 1 ~ "Manhattan",
+    BORO == 2 ~ "Bronx",
+    BORO == 3 ~ "Brooklyn",
+    BORO == 4 ~ "Queens",
+    BORO == 5 ~ "Staten Island"))
+
+ALLRES23 <- ALLRES23 %>% mutate(BORO = fct_relevel(BORO, 
+            "Manhattan", "Bronx", "Brooklyn", 
+            "Queens", "Staten Island"))
+
+ggplot(data = ALLRES23, aes(x = factor(BORO), 
+                          fill = factor(BORO))) +
+    geom_bar(position = "dodge") + 
+  geom_text(stat='count', aes(label=after_stat(count)), vjust=2, size = 4, color = "white") +
+    labs(title = 'Office to Residential Building Conversions in NYC', subtitle = "", x = 'Borough', y = 'Count', fill = 'Borough', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + 
+  scale_fill_colorblind(labels = c("Manhattan", "Bronx", "Brooklyn", "Queens", "Staten Island"))
+
+
+
+```
+
+
+```{r}
+#Office to Mixed Residential Conversions by Boro
+
+MIXEDRES23 <- subset(OFFICES23, OUTCOME == "MixedRes")
+
+MIXEDRES23 <- MIXEDRES23 %>% mutate(BORO = case_when(
+    BORO == 1 ~ "Manhattan",
+    BORO == 2 ~ "Bronx",
+    BORO == 3 ~ "Brooklyn",
+    BORO == 4 ~ "Queens",
+    BORO == 5 ~ "Staten Island"))
+
+MIXEDRES23 <- MIXEDRES23 %>% mutate(BORO = fct_relevel(BORO, 
+            "Manhattan", "Bronx", "Brooklyn", 
+            "Queens", "Staten Island"))
+
+ggplot(data = MIXEDRES23, aes(x = factor(BORO),
+                          fill = factor(BLD_Class))) +
+    geom_bar(position = "dodge") + 
+    labs(title = 'Office to Mixed Residential Use Conversions in NYC', subtitle = "Have mixed-use conversions created new housing?", x = 'Borough', y = 'Count', fill = 'Mixed Residential Class in 2023', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + 
+  scale_fill_colorblind(labels = c("S1 - PRIMARILY 1 FAMILY WITH 1 STORE OR OFFICE", "S2 - PRIMARILY 2 FAMILY WITH 1 STORE OR OFFICE", "S3 - PRIMARILY 3 FAMILY WITH 1 STORE OR OFFICE", "S4 - PRIMARILY 4 FAMILY WITH 1 STORE OROFFICE", "S5 - PRIMARILY 5-6 FAMILY WITH 1 STORE OR OFFICE", "S9 - SINGLE OR MULTIPLE DWELLING WITH STORES OR OFFICES"))
+```
+
+
+
+```{r}
+#Are the Brooklyn S2 buildings actually conversions in use, or just changing in coding
+BKMRTEST <- subset(OFFICEPANEL, BORO == 3 & BLD_Class == "S2")
+
+Test2010 <- subset(OFFICEPANEL, Year == 2010)
+
+BKMRTEST_Table <- Test2010[Test2010$BBLE %in% BKMRTEST$BBLE, ]
+
+
+
+ggplot(data = BKMRTEST_Table, aes(x = factor(BLD_Class),
+                          fill = factor(BLD_Class))) +
+    geom_bar(position = "dodge") + 
+    labs(title = 'Conversions to Mixed 2 Family Class in Brooklyn', subtitle = "Do S2 class conversions in Brooklyn actually represent a singificant change in use? ", x = 'Original Office Class', y = 'Count', fill = 'Original Office Class in 2010', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + 
+  scale_fill_colorblind(labels = c("O5 - OFFICE WITH COMM - 1 TO 6 STORIES", "O7 - PROFESSIONAL BUILDINGS/STAND ALONE FUNERAL HOMES", "O8 - OFFICE WITH APARTMENTS ONLY (NO COMM)", "O9 - MISCELLANEOUS AND OLD STYLE BANK BLDGS."))
+```
+
+
+
+Now Graph classes of Residential Conversions in Manhattan:
+
+```{r}
+MRES23 <- subset(MOFFICES23, OUTCOME == "Res Conv")
+
+table(MRES23$BLD_Class)
+
+MRES23 <- MRES23 %>%
+  mutate(Class_Simplified = case_when(
+    BLD_Class == "D1" | BLD_Class == "D3"| BLD_Class == "D5" | BLD_Class == "D6"| BLD_Class == "D7" | BLD_Class == "D8" | BLD_Class == "D9" | BLD_Class == "D6" ~ "D1:D9",
+    .default = BLD_Class))
+
+ggplot(data = MRES23, aes(x = factor(Class_Simplified), 
+                          fill = factor(Class_Simplified))) +
+    geom_bar(position = "dodge") + 
+  geom_text(stat='count', aes(label=after_stat(count)), vjust=-0.25, size = 4, color = "black") +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+    labs(title = '2010-2023 Residential Conversions in Manhattan', subtitle = "Building class of 55 converted buildings", x = 'Office to Residential Conversion Class', y = 'Count', fill = 'Residential Class Category in 2023', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + scale_fill_ordinal(labels = c("A4 - CITY RESIDENCE ONE FAMILY", "A5 - ONE FAMILY ATTACHED OR SEMI-DETACHED", "A7 - MANSION TYPE OR TOWN HOUSE", "B1 - TWO FAMILY BRICK", "C0 - THREE FAMILIES", "C3 - FOUR FAMILIES", "C7 - WALK-UP APT. OVER SIX FAMILIES WITH STORES","ELEVATOR APT (D1,D3,D5,D6,D7,D8,D9)"))
+
+```
+
+```{r}
+BKRES23 <- subset(OFFICES23, OUTCOME == "Res Conv" & BORO == 3)
+
+
+BKRES23 <- BKRES23 %>%
+  mutate(Class_Simplified = case_when(
+    BLD_Class == "D1" | BLD_Class == "D3"| BLD_Class == "D5" | BLD_Class == "D6"| BLD_Class == "D7" | BLD_Class == "D8" | BLD_Class == "D9" | BLD_Class == "D6" ~ "D1:D9",
+    BLD_Class == "B1" | BLD_Class == "B2"| BLD_Class == "B3" ~ "B1,B2,B3",
+    .default = BLD_Class))
+
+ggplot(data = BKRES23, aes(x = factor(Class_Simplified), 
+                          fill = factor(Class_Simplified))) +
+    geom_bar(position = "dodge") + 
+  geom_text(stat='count', aes(label=after_stat(count)), vjust=-0.25, size = 4, color = "black") +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+    labs(title = 'Office to Residential Conversions in Brooklyn (2010-2023)', subtitle = "Building class of 56 converted buildings", x = 'Office to Residential Conversion Class', y = 'Count', fill = 'Residential Class Category in 2023', caption = "Data from NYC DOF and NYC DOB 2023") + 
+    theme_classic() + 
+  theme(text = element_text(size = 10), plot.caption.position = "plot") + scale_fill_ordinal(labels = c("A1 - TWO STORIES DETACHED SM OR MID","A3 - LARGE SUBURBAN RESIDENCE",  "A4 - CITY RESIDENCE ONE FAMILY", "A5 - ONE FAMILY ATTACHED OR SEMI-DETACHED", "TWO FAMILY BRICK (B1,B2, B3)", "C0 - THREE FAMILIES","C1 - OVER SIX FAMILIES WITHOUT STORES","C2 - FIVE TO SIX FAMILIES","C3 - FOUR FAMILIES", "C7 - WALK-UP APT. OVER SIX FAMILIES WITH STORES","ELEVATOR APT (D1,D3,D5,D6,D7,D9)"))
+
+
+```
+

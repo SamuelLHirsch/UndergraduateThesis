@@ -1,0 +1,163 @@
+---
+title: "Thesis3.7"
+author: "Hirsch"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(plm)
+library(dplyr)
+```
+
+
+```{r}
+#loading in pre-joined office files
+
+OB_10 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_10.csv")
+OB_10$Year <- c(2010)
+
+OB_11 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_11.csv")
+OB_11$Year <- c(2011)
+
+OB_12 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_12.csv")
+OB_12$Year <- c(2012)
+
+OB_13 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_13.csv")
+OB_13$Year <- c(2013)
+
+
+OB_14 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_14.csv")
+OB_14$Year <- c(2014)
+OB_15 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_15.csv")
+OB_15$Year <- c(2015)
+
+OB_16 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_16.csv")
+OB_16$Year <- c(2016)
+
+OB_17 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_17.csv")
+OB_17$Year <- c(2017)
+
+OB_18 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_18.csv")
+OB_18$Year <- c(2018)
+
+OB_19 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_19.csv")
+OB_19$Year <- c(2019)
+
+#change in columns
+
+OB_20 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_20.csv")
+OB_20$Year <- c(2020)
+
+OB_21 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_21.csv")
+OB_21$Year <- c(2021)
+
+OB_22 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_22.csv")
+OB_22$Year <- c(2022)
+
+OB_23 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/OB_23.csv")
+OB_23$Year <- c(2023)
+```
+
+
+```{r}
+# How many are in 2010 that no longer exist in 2023? (eg... buildings that disappeared?)
+
+# How many are there in 2023 that didn't exist in 2010 (eg. new office buildings)
+
+OB_10
+```
+
+```{r}
+OB_19
+```
+
+```{r}
+OB_23
+```
+
+```{r}
+#binding 2010-2019
+
+Frame10_19 <- rbind(OB_10, OB_11, OB_12, OB_13, OB_14, OB_15, OB_16, OB_17, OB_18, OB_19)
+
+Frame10_19
+
+Frame20_23 <- rbind(OB_20, OB_21, OB_22, OB_23)
+
+Frame20_23
+```
+
+
+```{r}
+#fro 10_23 FINMKTTOT is the var i want
+#for 10_19 the equivalent is NEW_FV_T
+
+OB_14 %>% filter(BBLE == "1005760046") #checked against propertyinformationportal
+OB_16 %>% filter(BBLE == "1005770034") #checked against propertyinformationportal
+
+```
+
+
+
+```{r}
+
+# What variables might I be interested in 2020-23. Selecting these: joining on BBLE.
+
+rows20_23 <- c('BBLE','BORO','BLOCK','LOT','Year','FINMKTLAND','FINMKTTOT','ZONING','BLDG_CLASS','OWNER','STREET_NAME','ZIP_CODE','UNITS','COOP_APTS','LOT_IRREG','BLD_STORY','NUM_BLDGS','CORNER','LAND_AREA','GROSS_SQFT','YRBUILT','HOUSENUM_LO','HOUSENUM_HI','BLD_FRT','BLD_DEP','HOTEL_AREA_GROSS','OFFICE_AREA_GROSS','RESIDENTIAL_AREA_GROSS','RETAIL_AREA_GROSS','LOFT_AREA_GROSS','FACTORY_AREA_GROSS','WAREHOUSE_AREA_GROSS','STORAGE_AREA_GROSS','GARAGE_AREA','OTHER_AREA_GROSS')
+
+#add: 'FINTAXCLASS', 
+
+Frame20_23 <- subset(Frame20_23, select = rows20_23)
+
+rows10_19 <- c('BBLE','BORO','BLOCK','LOT','Year','NEW_FV_L','NEW_FV_T','ZONING','BLDGCL','OWNER','STR_NAME','ZIP','TOT_UNIT','RES_UNIT','IRREG','STORY','BLDGS','CORNER','LND_AREA','GR_SQFT','YRB','HNUM_LO','HNUM_HI')
+
+Frame10_19 <- subset(Frame10_19, select = rows10_19)
+```
+
+
+
+
+```{r}
+Frame20_23
+Frame10_19
+```
+
+
+```{r}
+
+FINALFRAME <- bind_rows(Frame10_19, Frame20_23)
+FINALFRAME
+
+#Tell R certain columns are equivalent
+
+FINALFRAME <- FINALFRAME %>% mutate(FinMktLand = coalesce(FINMKTLAND, NEW_FV_L))
+FINALFRAME <- FINALFRAME %>% mutate(FinMktTot = coalesce(FINMKTTOT, NEW_FV_T))
+FINALFRAME <- FINALFRAME %>% mutate(BLD_Class = coalesce(BLDG_CLASS, BLDGCL))
+FINALFRAME <- FINALFRAME %>% mutate(Street = coalesce(STREET_NAME, STR_NAME))
+
+FINALFRAME <- FINALFRAME %>% mutate(Zip = coalesce(as.character(ZIP_CODE), as.character(ZIP)))
+FINALFRAME <- FINALFRAME %>% mutate(TotalUnits = coalesce(UNITS, TOT_UNIT))
+FINALFRAME <- FINALFRAME %>% mutate(ResUnits = coalesce(COOP_APTS, RES_UNIT))
+FINALFRAME <- FINALFRAME %>% mutate(IrregLot = coalesce(LOT_IRREG, IRREG))
+
+FINALFRAME <- FINALFRAME %>% mutate(BLD_Story = coalesce(BLD_STORY, STORY))
+FINALFRAME <- FINALFRAME %>% mutate(Num_BLD = coalesce(NUM_BLDGS, BLDGS))
+FINALFRAME <- FINALFRAME %>% mutate(Land_Area = coalesce(LAND_AREA, LND_AREA))
+FINALFRAME <- FINALFRAME %>% mutate(Gross_SQFT = coalesce(GROSS_SQFT, GR_SQFT))
+
+FINALFRAME <- FINALFRAME %>% mutate(Year_Built = coalesce(YRBUILT, YRB))
+FINALFRAME <- FINALFRAME %>% mutate(BLD_Num_Lo = coalesce(HOUSENUM_LO, HNUM_LO))
+FINALFRAME <- FINALFRAME %>% mutate(BLD_Num_Hi = coalesce(HOUSENUM_HI, HNUM_HI))
+
+FINALFRAME <- subset(FINALFRAME, select = -c(FINMKTLAND, NEW_FV_L, FINMKTTOT, NEW_FV_T, BLDG_CLASS, BLDGCL, STREET_NAME, STR_NAME, ZIP_CODE, ZIP, UNITS, TOT_UNIT, COOP_APTS, RES_UNIT, LOT_IRREG, IRREG,BLD_STORY, STORY, NUM_BLDGS, BLDGS,LAND_AREA, LND_AREA,GROSS_SQFT, GR_SQFT,YRBUILT, YRB,HOUSENUM_LO, HNUM_LO,HOUSENUM_HI, HNUM_HI))
+
+FINALFRAME
+```
+
+```{r}
+write.csv(FINALFRAME, "~/Desktop/SENIOR THESIS/FINALDATA/FINALFRAME.csv")
+```
+

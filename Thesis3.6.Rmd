@@ -1,0 +1,202 @@
+---
+title: "Thesis3.6"
+author: "Hirsch"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Desktop/SENIOR THESIS")
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+T_10 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_10.csv")
+T_11 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_11.csv")
+T_12 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_12.csv")
+T_13 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_13.csv")
+T_14 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_14.csv")
+T_15 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_15.csv")
+T_16 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_16.csv")
+T_17 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_17.csv")
+T_18 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_18.csv")
+T_19 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_19.csv")
+T_20 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_20.csv")
+T_21 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_21.csv")
+T_22 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_22.csv")
+T_23 <- read.csv("~/Desktop/SENIOR THESIS/Final CSV/T_23.csv")
+```
+
+```{r}
+
+T_20$BBLE <- gsub("[^0-9]", "", T_20$BBLE) # cleaning up '20 BBLE strings to include only numbers, so they match 2010-2019
+
+
+T_21$BBLE <- gsub("[^0-9]", "", T_21$BBLE) # cleaning up '21 BBLE strings to include only numbers
+
+T_22$BBLE <- gsub("[^0-9]", "", T_22$BBLE) # cleaning up '22 BBLE strings to include only numbers
+
+T_23$BBLE <- gsub("[^0-9]", "", T_23$BBLE) # cleaning up '23 BBLE strings to include only numbers
+```
+
+
+
+```{r}
+officeClasses <- c("O1", "O2", "O3", "O4", "O5", "O6", "O7","O8", "O9")
+
+OB_10 <- filter(T_10, BLDGCL %in% officeClasses) #Office buildings in 2010
+
+OB_11 <- filter(T_11, BLDGCL %in% officeClasses | BBLE %in% OB_10$BBLE) 
+##buildings in 2011 that are offices or were offices in 2010
+
+OB_12 <- filter(T_12, BLDGCL %in% officeClasses | BBLE %in% OB_11$BBLE) 
+##buildings in 2012 that are offices or were offices/former offices in 2011
+
+OB_13 <- filter(T_13, BLDGCL %in% officeClasses | BBLE %in% OB_12$BBLE)
+##buildings in 2013 that are offices or were offices/former offices in 2012
+
+OB_14 <- filter(T_14, BLDGCL %in% officeClasses| BBLE %in% OB_13$BBLE)
+##buildings in 2014 that are offices or were offices/former offices in 2013... etc...
+
+OB_15 <- filter(T_15, BLDGCL %in% officeClasses| BBLE %in% OB_14$BBLE)
+OB_16 <- filter(T_16, BLDGCL %in% officeClasses| BBLE %in% OB_15$BBLE)
+OB_17 <- filter(T_17, BLDGCL %in% officeClasses| BBLE %in% OB_16$BBLE)
+OB_18 <- filter(T_18, BLDGCL %in% officeClasses| BBLE %in% OB_17$BBLE)
+OB_19 <- filter(T_19, BLDGCL %in% officeClasses| BBLE %in% OB_18$BBLE)
+
+
+OB_20 <- filter(T_20, BLDG_CLASS %in% officeClasses| BBLE %in% OB_19$BBLE) #buildings in 2020 that are offices, or were offices/former offices in 2019
+
+OB_21 <- filter(T_21, BLDG_CLASS %in% officeClasses| BBLE %in% OB_20$BBLE) ##buildings in 2021 that are offices, or were offices/former offices in 2020
+
+OB_22 <- filter(T_22, BLDG_CLASS %in% officeClasses| BBLE %in% OB_21$BBLE)
+
+OB_23 <- filter(T_23, BLDG_CLASS %in% officeClasses| BBLE %in% OB_22$BBLE)
+
+```
+
+```{r}
+head(T_19$BBLE) #19
+
+head(T_20$BBLE) #20
+```
+
+
+```{r}
+table(OB_10$BLDGCL)
+table(OB_11$BLDGCL)
+table(OB_12$BLDGCL)
+table(OB_16$BLDGCL)
+table(OB_17$BLDGCL)
+table(OB_20$BLDG_CLASS)
+table(OB_21$BLDG_CLASS)
+
+```
+
+```{r}
+OB_23
+```
+
+```{r}
+# Checking for duplicate BBLE codes, which we only see for 2020-2023
+table(duplicated(OB_10$BBLE))
+table(duplicated(OB_11$BBLE))
+table(duplicated(OB_15$BBLE))
+table(duplicated(OB_18$BBLE))
+table(duplicated(OB_19$BBLE))
+table(duplicated(OB_20$BBLE))
+table(duplicated(OB_21$BBLE))
+table(duplicated(OB_22$BBLE))
+table(duplicated(OB_23$BBLE))
+
+```
+
+
+```{r}
+OB_23
+# Note: Easements can have the same BBLE, so have to remove those observations: easements are not relevant, only the building is
+
+OB_23$EASE <- as.factor(OB_23$EASE)
+table(OB_23$EASE)
+filter(select(OB_23, BBLE, EASE, BLDG_CLASS, OWNER), EASE != " ") # Most easements seem to be owned by NYC agencies/utilities
+
+OB_20 <- filter(OB_20, EASE == " ")
+OB_21 <- filter(OB_21, EASE == " ")
+OB_22 <- filter(OB_22, EASE == " ")
+OB_23 <- filter(OB_23, EASE == " ")
+
+```
+
+```{r}
+# Now check for duplicates again
+table(duplicated(OB_10$BBLE))
+table(duplicated(OB_11$BBLE))
+table(duplicated(OB_15$BBLE))
+table(duplicated(OB_18$BBLE))
+table(duplicated(OB_19$BBLE))
+table(duplicated(OB_20$BBLE))
+table(duplicated(OB_21$BBLE))
+table(duplicated(OB_22$BBLE))
+table(duplicated(OB_23$BBLE))
+
+#removing easement entries removed BBLE duplicates
+
+```
+
+```{r}
+head(OB_20) # we can see we have an error here with both "X.1" and "X" columns
+```
+
+
+```{r}
+
+all.equal(OB_20$X, OB_20$X.1) # Can we get rid of X.1 in 2020-2023? looks same for 23, 21, 20
+all.equal(OB_21$X, OB_21$X.1) # Can we get rid of X.1 in 2020-2023? looks same for 23, 21, 20
+all.equal(OB_22$X, OB_22$X.1) # Can we get rid of X.1 in 2020-2023? looks same for 23, 21, 20
+all.equal(OB_23$X, OB_23$X.1) # Can we get rid of X.1 in 2020-2023? looks same for 23, 21, 20
+```
+
+```{r}
+OB_20 <- OB_20 %>% subset(select = -X.1)
+OB_21 <- OB_21 %>% subset(select = -X.1)
+OB_22 <- OB_22 %>% subset(select = -X.1)
+OB_23 <- OB_23 %>% subset(select = -X.1)
+
+#We will remove easement later. Its in every year so it wont cause problems. 
+```
+
+```{r}
+head(OB_23) #X columns fixed
+```
+
+
+```{r}
+
+# Column names change between 2019 and 2020... but are the same from 2010-2019 and 2020-2023
+head(OB_15)
+OB_23
+```
+
+
+```{r}
+# Let's save these Office building-sorted and semi-cleaned files before joining
+
+write.csv(OB_10, "~/Desktop/SENIOR THESIS/Final CSV/OB_10.csv")
+write.csv(OB_11, "~/Desktop/SENIOR THESIS/Final CSV/OB_11.csv")
+write.csv(OB_12, "~/Desktop/SENIOR THESIS/Final CSV/OB_12.csv")
+write.csv(OB_13, "~/Desktop/SENIOR THESIS/Final CSV/OB_13.csv")
+write.csv(OB_14, "~/Desktop/SENIOR THESIS/Final CSV/OB_14.csv")
+write.csv(OB_15, "~/Desktop/SENIOR THESIS/Final CSV/OB_15.csv")
+write.csv(OB_16, "~/Desktop/SENIOR THESIS/Final CSV/OB_16.csv")
+write.csv(OB_17, "~/Desktop/SENIOR THESIS/Final CSV/OB_17.csv")
+write.csv(OB_18, "~/Desktop/SENIOR THESIS/Final CSV/OB_18.csv")
+write.csv(OB_19, "~/Desktop/SENIOR THESIS/Final CSV/OB_19.csv")
+write.csv(OB_20, "~/Desktop/SENIOR THESIS/Final CSV/OB_20.csv")
+write.csv(OB_21, "~/Desktop/SENIOR THESIS/Final CSV/OB_21.csv")
+write.csv(OB_22, "~/Desktop/SENIOR THESIS/Final CSV/OB_22.csv")
+write.csv(OB_23, "~/Desktop/SENIOR THESIS/Final CSV/OB_23.csv")
+
+```
+
