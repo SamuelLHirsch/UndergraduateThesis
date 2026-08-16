@@ -1,1 +1,6 @@
 This repository includes the R files for my data analysis as well as some highlighted graphs.
+
+The Thesis files are sequential: 
+          ex. The csv output for thesis 2.0 is the csv input for thesis 2.1
+          Every step can be easily edited seperately.
+          This helps speed up compiling and ease comprehensibility with such a large data set.
